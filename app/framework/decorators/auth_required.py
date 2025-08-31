@@ -2,13 +2,12 @@ from functools import wraps
 from flask import redirect, session, url_for, request, jsonify
 
 from app.framework.decorators.inject import inject
-from app.services.auth_service import AuthService
+from app.framework.auth_service import AuthService
 from jwt import PyJWTError
 import jwt
 from app import app
 
-
-def auth_required(level="USER", or_is_current_user=False):
+def auth_required(level="USER", or_is_current_user=False, **auth_kwargs):
     def auth_required_decorator(func):
         @wraps(func)
         @inject
@@ -26,18 +25,19 @@ def auth_required(level="USER", or_is_current_user=False):
 
             try:
                 token = token.replace('Bearer ', '')
-                current_user = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-                print(current_user)
-                print(type(current_user))
+                current_token_user = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+                print(current_token_user)
+                print(type(current_token_user))
             except PyJWTError as e:
                 print(e)
                 return redirect(url_for('index'))
 
-            authService.set_current_user(current_user)
-            if level in current_user['roles']:
-                return func(*args, **kwargs)
+            current_user = authService.set_current_user(current_token_user)
 
-            if or_is_current_user and current_user['userid'] == kwargs['userid']:
+            if not current_user:
+                return redirect(url_for('index'))
+
+            if authService.check_rights(current_user, level, or_is_current_user, kwargs.get('userid'), **auth_kwargs):
                 return func(*args, **kwargs)
 
             return redirect(url_for('index'))

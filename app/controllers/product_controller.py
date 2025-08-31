@@ -1,48 +1,50 @@
 from flask import jsonify, request
-from app.forms.product_forms.product_form import ProductForm
 from app import app
+from app.forms.product_forms.product_form import ProductForm
+from app.framework.decorators.auth_required import auth_required
+from app.framework.decorators.inject import inject
 from app.services.product_service import ProductService
 
 
 @app.get('/products')
-def get_products():
-    product_service = ProductService()
-    return jsonify([p.serialize() for p in product_service.find_all()])
+@inject
+def get_all_products(product_service: ProductService):
+    return jsonify([dto.serialize() for dto in product_service.find_all()])
 
+@app.get('/products/<int:id>')
+@inject
+def get_product_by_id(id, product_service: ProductService):
 
-@app.get('/products/<int:productid>')
-def get_product(productid):
-    product_service = ProductService()
-    product = product_service.find_one(productid)
-    return jsonify(product.serialize()) if product else ('', 404)
-
+    dto = product_service.find_one(id)
+    return jsonify(dto.serialize())
 
 @app.post('/products')
-def post_product():
-    product_service = ProductService()
-    form = ProductForm()
-
+@auth_required(level="ADMIN")
+@inject
+def post_product(product_service: ProductService):
+    form = ProductForm.from_json(request.json)
     if form.validate():
-        product = product_service.insert(form)
-        return jsonify(product.serialize()), 201
+        dto = product_service.insert(form)
 
-    return jsonify(form.errors), 400
+        return jsonify(dto.serialize())
 
+    return jsonify(form.errors)
 
-@app.put('/products/<int:productid>')
-def put_product(productid):
-    product_service = ProductService()
-    form = ProductForm()
-
+@app.put('/products/<int:id>')
+@auth_required(level="ADMIN")
+@inject
+def put_product(id, product_service: ProductService):
+    form = ProductForm.from_json(request.json)
     if form.validate():
-        product = product_service.update(productid, form)
-        return jsonify(product.serialize()) if product else ('', 404)
+        dto = product_service.update(id, form)
 
-    return jsonify(form.errors), 400
+        return jsonify(dto.serialize()) if dto else None
 
+    return jsonify(form.errors)
 
-@app.delete('/products/<int:productid>')
-def delete_product(productid):
-    product_service = ProductService()
-    success = product_service.delete(productid)
-    return ('', 204) if success else ('', 404)
+@app.delete('/products/<int:id>')
+@auth_required(level="ADMIN")
+@inject
+def delete_product(id, product_service: ProductService):
+    dto = product_service.delete(id)
+    return jsonify(dto.serialize()) if dto else None

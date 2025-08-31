@@ -1,52 +1,56 @@
 from flask import jsonify, request
 
-from app.forms.users_forms.user_register_form import UserRegisterForm
 from app import app
+from app.forms.users_forms.user_register_form import UserRegisterForm
 from app.forms.users_forms.user_update_form import UserUpdateForm
+from app.framework.auth_service import AuthService
+from app.framework.decorators.auth_required import auth_required
+from app.framework.decorators.inject import inject
 from app.services.user_service import UserService
 
 @app.get('/users')
-def get_users():
-    user_service = UserService()
+@auth_required() # demande d'être loggé
+@inject
+def get_users(user_service: UserService):
     return jsonify([u.serialize() for u in user_service.find_all()])
 
-
 @app.get('/users/<int:userid>')
-def get_user(userid: int):
-    user_service = UserService()
+@auth_required() # demande d'être loggé
+@inject
+def get_user(userid: int, user_service: UserService):
     user = user_service.find_one(userid)
     return jsonify(user.serialize()) if user else ('', 404)
 
-
 @app.post('/users')
-def post_user():
-    user_service = UserService()
+@auth_required(level="ADMIN") # demande d'être loggé en tant qu'admin
+@inject
+def post_user(user_service: UserService):
     form = UserRegisterForm.from_json(request.json)
-
+    
     if form.validate():
         user = user_service.insert(form)
+        
         return jsonify(user.serialize())
+    
+    return jsonify(form.errors)
 
-    return jsonify(form.errors), 400
-
-
+# localhost:2344/users/25
 @app.put('/users/<int:userid>')
-def put_user(userid: int):
-    user_service = UserService()
+@auth_required(level="ADMIN", or_is_current_user=True) # demande d'être loggé en tant qu'admin ou d'être l'utilisateur en cours
+@inject
+def put_user(userid: int, user_service: UserService):
     form = UserUpdateForm.from_json(request.json)
-
+    
     if form.validate():
-        user = user_service.update(userid, form)
-        return jsonify(user.serialize()) if user else ('', 404)
+        dto = user_service.update(userid, form)
 
-    return jsonify(form.errors), 400
-
+        return jsonify(dto.serialize()) if dto else None
+    
+    return jsonify(form.errors)
 
 @app.delete('/users/<int:userid>')
-def delete_user(userid: int):
-    user_service = UserService()
-    user = user_service.find_one(userid)
-    if user:
-        user_service.delete(user)
-        return ('', 204)
-    return ('', 404)
+@auth_required(level="ADMIN", or_is_current_user=True) # demande d'être loggé en tant qu'admin ou d'être l'utilisateur en cours
+@inject
+def delete_user(userid: int, user_service: UserService):
+    dto = user_service.delete(userid)
+    return jsonify(dto.serialize()) if dto else None
